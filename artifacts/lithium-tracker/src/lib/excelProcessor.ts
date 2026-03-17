@@ -1,0 +1,201 @@
+import * as XLSX from "xlsx";
+
+export interface ProcessedRow {
+  month: number;
+  carName: string;
+  rawDate: string;
+  matchedCar?: string;
+  lithiumKg?: number;
+  matchScore?: number;
+}
+
+export interface ReferenceRow {
+  carName: string;
+  lithiumKg: number;
+}
+
+export interface MonthSummary {
+  month: number;
+  monthName: string;
+  totalLithiumKg: number;
+  rowCount: number;
+  rows: ProcessedRow[];
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+function normalizeCarName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenSimilarity(a: string, b: string): number {
+  const tokensA = new Set(normalizeCarName(a).split(" ").filter(Boolean));
+  const tokensB = new Set(normalizeCarName(b).split(" ").filter(Boolean));
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+
+  let shared = 0;
+  for (const token of tokensA) {
+    if (tokensB.has(token)) shared++;
+  }
+
+  const unionSize = tokensA.size + tokensB.size - shared;
+  return shared / unionSize;
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1];
+      else dp[i][j] = 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function stringSimilarity(a: string, b: string): number {
+  const na = normalizeCarName(a);
+  const nb = normalizeCarName(b);
+  if (na === nb) return 1;
+
+  const maxLen = Math.max(na.length, nb.length);
+  if (maxLen === 0) return 1;
+  const levScore = 1 - levenshtein(na, nb) / maxLen;
+  const tokenScore = tokenSimilarity(a, b);
+
+  return (levScore + tokenScore) / 2;
+}
+
+export function findBestMatch(
+  carName: string,
+  references: ReferenceRow[],
+  threshold = 0.5
+): { ref: ReferenceRow; score: number } | null {
+  let best: { ref: ReferenceRow; score: number } | null = null;
+
+  for (const ref of references) {
+    const score = stringSimilarity(carName, ref.carName);
+    if (score >= threshold && (!best || score > best.score)) {
+      best = { ref, score };
+    }
+  }
+
+  return best;
+}
+
+export function parseReferenceFile(file: File): Promise<ReferenceRow[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: "binary" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
+
+        const result: ReferenceRow[] = [];
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const carName = String(row[0] ?? "").trim();
+          const lithiumRaw = row[1];
+          const lithiumKg = typeof lithiumRaw === "number" ? lithiumRaw : parseFloat(String(lithiumRaw ?? ""));
+
+          if (!carName || carName === "" || isNaN(lithiumKg)) continue;
+          result.push({ carName, lithiumKg });
+        }
+        resolve(result);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error("Failed to read reference file"));
+    reader.readAsBinaryString(file);
+  });
+}
+
+export function parseInputFile(
+  file: File,
+  references: ReferenceRow[]
+): Promise<{ rows: ProcessedRow[]; monthlySummaries: MonthSummary[] }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: "binary" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rawRows: unknown[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][];
+
+        const processedRows: ProcessedRow[] = [];
+
+        for (let i = 0; i < rawRows.length; i++) {
+          const row = rawRows[i];
+          if (!row || row.length === 0) continue;
+
+          const colB = String(row[1] ?? "").trim();
+          const colD = String(row[3] ?? "").trim();
+          const colE = String(row[4] ?? "").trim().toLowerCase();
+
+          if (colE === "benzin" || colE === "diesel") continue;
+          if (colE !== "" && colE !== "el") continue;
+
+          if (!colB || !colD) continue;
+
+          let month: number | null = null;
+          const dateMatch = colB.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          if (dateMatch) {
+            month = parseInt(dateMatch[2], 10);
+          } else {
+            const excelNum = parseFloat(colB);
+            if (!isNaN(excelNum)) {
+              const jsDate = new Date(Math.round((excelNum - 25569) * 86400 * 1000));
+              month = jsDate.getUTCMonth() + 1;
+            }
+          }
+
+          if (!month || month < 1 || month > 12) continue;
+
+          const match = findBestMatch(colD, references);
+          const processed: ProcessedRow = {
+            month,
+            carName: colD,
+            rawDate: colB,
+            matchedCar: match?.ref.carName,
+            lithiumKg: match?.ref.lithiumKg,
+            matchScore: match?.score,
+          };
+          processedRows.push(processed);
+        }
+
+        const monthlySummaries: MonthSummary[] = Array.from({ length: 12 }, (_, i) => {
+          const m = i + 1;
+          const monthRows = processedRows.filter((r) => r.month === m);
+          const totalLithiumKg = monthRows.reduce((sum, r) => sum + (r.lithiumKg ?? 0), 0);
+          return {
+            month: m,
+            monthName: MONTH_NAMES[i],
+            totalLithiumKg,
+            rowCount: monthRows.length,
+            rows: monthRows,
+          };
+        });
+
+        resolve({ rows: processedRows, monthlySummaries });
+      } catch (err) {
+        reject(err);
+      }
+    };
+    reader.onerror = () => reject(new Error("Failed to read input file"));
+    reader.readAsBinaryString(file);
+  });
+}
