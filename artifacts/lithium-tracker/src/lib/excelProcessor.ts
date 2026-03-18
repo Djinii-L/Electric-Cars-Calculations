@@ -119,7 +119,7 @@ export function parseReferenceFile(file: File): Promise<ReferenceRow[]> {
         for (let i = 0; i < rows.length; i++) {
           const row = rows[i];
           const carName = String(row[0] ?? "").trim();
-          const lithiumRaw = row[1];
+          const lithiumRaw = row[3];
           const lithiumKg = typeof lithiumRaw === "number" ? lithiumRaw : parseFloat(String(lithiumRaw ?? ""));
           const categoryRaw = String(row[6] ?? "").trim();
 
