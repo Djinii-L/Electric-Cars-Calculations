@@ -289,7 +289,7 @@ export default function Home() {
                 />
                 <FileDropZone
                   label="File 2 — Reference File"
-                  description="Car names (Col A), Lithium kg (Col B), category C2/C3/C2-C3 (Col G)"
+                  description="Car names (Col A), Lithium kg (Col D), category C2/C3/C2-C3 (Col G)"
                   file={referenceFile}
                   onFile={setReferenceFile}
                   accent="purple"
