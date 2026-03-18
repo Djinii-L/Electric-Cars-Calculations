@@ -15,13 +15,7 @@ export interface ProcessedRow {
 export interface ReferenceRow {
   carName: string;
   lithiumKg: number;
-}
-
-export interface CategoryBreakdown {
-  C2: { lithiumKg: number; count: number };
-  C3: { lithiumKg: number; count: number };
-  "C2-C3": { lithiumKg: number; count: number };
-  Other: { lithiumKg: number; count: number };
+  category: Category;
 }
 
 export interface MonthSummary {
@@ -30,7 +24,6 @@ export interface MonthSummary {
   totalLithiumKg: number;
   rowCount: number;
   rows: ProcessedRow[];
-  byCategory: CategoryBreakdown;
 }
 
 const MONTH_NAMES = [
@@ -128,9 +121,10 @@ export function parseReferenceFile(file: File): Promise<ReferenceRow[]> {
           const carName = String(row[0] ?? "").trim();
           const lithiumRaw = row[1];
           const lithiumKg = typeof lithiumRaw === "number" ? lithiumRaw : parseFloat(String(lithiumRaw ?? ""));
+          const categoryRaw = String(row[6] ?? "").trim();
 
           if (!carName || carName === "" || isNaN(lithiumKg)) continue;
-          result.push({ carName, lithiumKg });
+          result.push({ carName, lithiumKg, category: normalizeCategory(categoryRaw) });
         }
         resolve(result);
       } catch (err) {
@@ -140,20 +134,6 @@ export function parseReferenceFile(file: File): Promise<ReferenceRow[]> {
     reader.onerror = () => reject(new Error("Failed to read reference file"));
     reader.readAsBinaryString(file);
   });
-}
-
-function buildCategoryBreakdown(rows: ProcessedRow[]): CategoryBreakdown {
-  const bd: CategoryBreakdown = {
-    C2: { lithiumKg: 0, count: 0 },
-    C3: { lithiumKg: 0, count: 0 },
-    "C2-C3": { lithiumKg: 0, count: 0 },
-    Other: { lithiumKg: 0, count: 0 },
-  };
-  for (const row of rows) {
-    bd[row.category].lithiumKg += row.lithiumKg ?? 0;
-    bd[row.category].count += 1;
-  }
-  return bd;
 }
 
 export function parseInputFile(
@@ -178,7 +158,6 @@ export function parseInputFile(
           const colB = String(row[1] ?? "").trim();
           const colD = String(row[3] ?? "").trim();
           const colE = String(row[4] ?? "").trim().toLowerCase();
-          const colG = String(row[6] ?? "").trim();
 
           if (colE === "benzin" || colE === "diesel") continue;
           if (colE !== "" && colE !== "el") continue;
@@ -199,11 +178,10 @@ export function parseInputFile(
 
           if (!month || month < 1 || month > 12) continue;
 
-          const category = normalizeCategory(colG);
           const match = findBestMatch(colD, references);
           const processed: ProcessedRow = {
             month,
-            category,
+            category: match?.ref.category ?? "Other",
             carName: colD,
             rawDate: colB,
             matchedCar: match?.ref.carName,
@@ -223,7 +201,6 @@ export function parseInputFile(
             totalLithiumKg,
             rowCount: monthRows.length,
             rows: monthRows,
-            byCategory: buildCategoryBreakdown(monthRows),
           };
         });
 
