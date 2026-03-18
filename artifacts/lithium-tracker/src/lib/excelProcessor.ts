@@ -1,7 +1,10 @@
 import * as XLSX from "xlsx";
 
+export type Category = "C2" | "C3" | "C2-C3" | "Other";
+
 export interface ProcessedRow {
   month: number;
+  category: Category;
   carName: string;
   rawDate: string;
   matchedCar?: string;
@@ -14,18 +17,34 @@ export interface ReferenceRow {
   lithiumKg: number;
 }
 
+export interface CategoryBreakdown {
+  C2: { lithiumKg: number; count: number };
+  C3: { lithiumKg: number; count: number };
+  "C2-C3": { lithiumKg: number; count: number };
+  Other: { lithiumKg: number; count: number };
+}
+
 export interface MonthSummary {
   month: number;
   monthName: string;
   totalLithiumKg: number;
   rowCount: number;
   rows: ProcessedRow[];
+  byCategory: CategoryBreakdown;
 }
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
 ];
+
+function normalizeCategory(raw: string): Category {
+  const s = raw.trim().toUpperCase().replace(/\s+/g, "");
+  if (s === "C2-C3" || s === "C2C3") return "C2-C3";
+  if (s === "C2") return "C2";
+  if (s === "C3") return "C3";
+  return "Other";
+}
 
 function normalizeCarName(name: string): string {
   return name
@@ -123,6 +142,20 @@ export function parseReferenceFile(file: File): Promise<ReferenceRow[]> {
   });
 }
 
+function buildCategoryBreakdown(rows: ProcessedRow[]): CategoryBreakdown {
+  const bd: CategoryBreakdown = {
+    C2: { lithiumKg: 0, count: 0 },
+    C3: { lithiumKg: 0, count: 0 },
+    "C2-C3": { lithiumKg: 0, count: 0 },
+    Other: { lithiumKg: 0, count: 0 },
+  };
+  for (const row of rows) {
+    bd[row.category].lithiumKg += row.lithiumKg ?? 0;
+    bd[row.category].count += 1;
+  }
+  return bd;
+}
+
 export function parseInputFile(
   file: File,
   references: ReferenceRow[]
@@ -145,6 +178,7 @@ export function parseInputFile(
           const colB = String(row[1] ?? "").trim();
           const colD = String(row[3] ?? "").trim();
           const colE = String(row[4] ?? "").trim().toLowerCase();
+          const colG = String(row[6] ?? "").trim();
 
           if (colE === "benzin" || colE === "diesel") continue;
           if (colE !== "" && colE !== "el") continue;
@@ -165,9 +199,11 @@ export function parseInputFile(
 
           if (!month || month < 1 || month > 12) continue;
 
+          const category = normalizeCategory(colG);
           const match = findBestMatch(colD, references);
           const processed: ProcessedRow = {
             month,
+            category,
             carName: colD,
             rawDate: colB,
             matchedCar: match?.ref.carName,
@@ -187,6 +223,7 @@ export function parseInputFile(
             totalLithiumKg,
             rowCount: monthRows.length,
             rows: monthRows,
+            byCategory: buildCategoryBreakdown(monthRows),
           };
         });
 

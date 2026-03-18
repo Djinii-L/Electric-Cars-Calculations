@@ -1,7 +1,24 @@
 import { useState, useCallback } from "react";
-import { parseInputFile, parseReferenceFile, MonthSummary, ProcessedRow, ReferenceRow } from "@/lib/excelProcessor";
+import { parseInputFile, parseReferenceFile, MonthSummary, ProcessedRow, ReferenceRow, Category } from "@/lib/excelProcessor";
 
 type Step = "upload" | "processing" | "results";
+
+const CATEGORY_COLORS: Record<Category, { bg: string; text: string; dot: string }> = {
+  C2:      { bg: "bg-violet-100",  text: "text-violet-700",  dot: "bg-violet-500" },
+  C3:      { bg: "bg-teal-100",    text: "text-teal-700",    dot: "bg-teal-500" },
+  "C2-C3": { bg: "bg-amber-100",   text: "text-amber-700",   dot: "bg-amber-500" },
+  Other:   { bg: "bg-gray-100",    text: "text-gray-500",    dot: "bg-gray-400" },
+};
+
+function CategoryPill({ category }: { category: Category }) {
+  const c = CATEGORY_COLORS[category];
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${c.bg} ${c.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+      {category}
+    </span>
+  );
+}
 
 function UploadIcon() {
   return (
@@ -44,7 +61,7 @@ function FileDropZone({
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
       className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${
-        dragging ? "border-blue-400 bg-blue-50" : file ? `border-green-400 bg-green-50` : "border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100"
+        dragging ? "border-blue-400 bg-blue-50" : file ? "border-green-400 bg-green-50" : "border-gray-200 bg-gray-50 hover:border-gray-300 hover:bg-gray-100"
       }`}
       onClick={() => document.getElementById(`file-input-${label}`)?.click()}
     >
@@ -81,6 +98,7 @@ function MatchBadge({ score }: { score?: number }) {
 }
 
 function MonthCard({ summary, onClick, isSelected }: { summary: MonthSummary; onClick: () => void; isSelected: boolean }) {
+  const cats: Category[] = ["C2", "C3", "C2-C3"];
   return (
     <button
       onClick={onClick}
@@ -88,62 +106,141 @@ function MonthCard({ summary, onClick, isSelected }: { summary: MonthSummary; on
         isSelected ? "border-blue-500 bg-blue-50 shadow-md" : "border-gray-200 bg-white hover:border-gray-300"
       }`}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-2">
         <span className="font-semibold text-gray-900">{summary.monthName}</span>
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${summary.rowCount > 0 ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"}`}>
           {summary.rowCount} vehicles
         </span>
       </div>
-      <div className="mt-2">
-        <span className="text-2xl font-bold text-gray-900">
-          {summary.totalLithiumKg.toFixed(2)}
-        </span>
-        <span className="text-sm text-gray-500 ml-1">kg Li</span>
+      <div className="mb-3">
+        <span className="text-xl font-bold text-gray-900">{summary.totalLithiumKg.toFixed(2)}</span>
+        <span className="text-sm text-gray-500 ml-1">kg Li total</span>
+      </div>
+      <div className="space-y-1">
+        {cats.map((cat) => {
+          const bd = summary.byCategory[cat];
+          const c = CATEGORY_COLORS[cat];
+          return (
+            <div key={cat} className="flex items-center justify-between text-xs">
+              <span className={`flex items-center gap-1 font-medium ${c.text}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+                {cat}
+                <span className="text-gray-400 font-normal">({bd.count})</span>
+              </span>
+              <span className="font-mono text-gray-600">{bd.lithiumKg.toFixed(2)} kg</span>
+            </div>
+          );
+        })}
       </div>
     </button>
   );
 }
 
+type CategoryFilter = "All" | Category;
+
 function RowsTable({ rows }: { rows: ProcessedRow[] }) {
+  const [filter, setFilter] = useState<CategoryFilter>("All");
+
+  const filteredRows = filter === "All" ? rows : rows.filter((r) => r.category === filter);
+
   if (rows.length === 0) {
     return <p className="text-center text-gray-400 py-8">No vehicles found for this month.</p>;
   }
+
+  const cats: CategoryFilter[] = ["All", "C2", "C3", "C2-C3", "Other"];
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-200">
-            <th className="text-left py-2 px-3 text-gray-500 font-medium">Car (File 1)</th>
-            <th className="text-left py-2 px-3 text-gray-500 font-medium">Matched Car (File 2)</th>
-            <th className="text-center py-2 px-3 text-gray-500 font-medium">Match</th>
-            <th className="text-right py-2 px-3 text-gray-500 font-medium">Lithium (kg)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
-              <td className="py-2 px-3 text-gray-800 font-medium">{row.carName}</td>
-              <td className="py-2 px-3 text-gray-600">{row.matchedCar ?? <span className="text-gray-400 italic">No match</span>}</td>
-              <td className="py-2 px-3 text-center"><MatchBadge score={row.matchScore} /></td>
-              <td className="py-2 px-3 text-right font-mono">
-                {row.lithiumKg !== undefined ? (
-                  <span className="font-semibold text-gray-800">{row.lithiumKg.toFixed(2)}</span>
-                ) : (
-                  <span className="text-gray-400">—</span>
-                )}
+    <div>
+      <div className="flex gap-1.5 mb-4 flex-wrap">
+        {cats.map((cat) => {
+          const count = cat === "All" ? rows.length : rows.filter((r) => r.category === cat).length;
+          if (count === 0 && cat !== "All") return null;
+          const active = filter === cat;
+          const c = cat === "All" ? null : CATEGORY_COLORS[cat as Category];
+          return (
+            <button
+              key={cat}
+              onClick={() => setFilter(cat)}
+              className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
+                active
+                  ? c ? `${c.bg} ${c.text} border-transparent` : "bg-blue-600 text-white border-transparent"
+                  : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+              }`}
+            >
+              {cat} <span className="opacity-70">({count})</span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-200">
+              <th className="text-left py-2 px-3 text-gray-500 font-medium">Category</th>
+              <th className="text-left py-2 px-3 text-gray-500 font-medium">Car (File 1)</th>
+              <th className="text-left py-2 px-3 text-gray-500 font-medium">Matched Car (File 2)</th>
+              <th className="text-center py-2 px-3 text-gray-500 font-medium">Match</th>
+              <th className="text-right py-2 px-3 text-gray-500 font-medium">Lithium (kg)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRows.map((row, i) => (
+              <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+                <td className="py-2 px-3"><CategoryPill category={row.category} /></td>
+                <td className="py-2 px-3 text-gray-800 font-medium">{row.carName}</td>
+                <td className="py-2 px-3 text-gray-600">{row.matchedCar ?? <span className="text-gray-400 italic">No match</span>}</td>
+                <td className="py-2 px-3 text-center"><MatchBadge score={row.matchScore} /></td>
+                <td className="py-2 px-3 text-right font-mono">
+                  {row.lithiumKg !== undefined ? (
+                    <span className="font-semibold text-gray-800">{row.lithiumKg.toFixed(2)}</span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-gray-200 bg-blue-50">
+              <td colSpan={4} className="py-2 px-3 font-semibold text-gray-700">
+                Total ({filteredRows.length} vehicles)
+              </td>
+              <td className="py-2 px-3 text-right font-mono font-bold text-blue-700">
+                {filteredRows.reduce((s, r) => s + (r.lithiumKg ?? 0), 0).toFixed(2)}
               </td>
             </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-gray-200 bg-blue-50">
-            <td colSpan={3} className="py-2 px-3 font-semibold text-gray-700">Total</td>
-            <td className="py-2 px-3 text-right font-mono font-bold text-blue-700">
-              {rows.reduce((s, r) => s + (r.lithiumKg ?? 0), 0).toFixed(2)}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function GrandTotalRow({ summaries }: { summaries: MonthSummary[] }) {
+  const cats: Category[] = ["C2", "C3", "C2-C3"];
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+      <div className="flex items-center justify-between px-1 mb-1">
+        <span className="text-sm font-bold text-gray-700">Grand Total</span>
+        <span className="font-bold text-blue-700 text-lg">
+          {summaries.reduce((s, m) => s + m.totalLithiumKg, 0).toFixed(2)} kg
+        </span>
+      </div>
+      {cats.map((cat) => {
+        const total = summaries.reduce((s, m) => s + m.byCategory[cat].lithiumKg, 0);
+        const count = summaries.reduce((s, m) => s + m.byCategory[cat].count, 0);
+        const c = CATEGORY_COLORS[cat];
+        return (
+          <div key={cat} className="flex items-center justify-between px-1 text-xs">
+            <span className={`flex items-center gap-1 font-medium ${c.text}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+              {cat}
+              <span className="text-gray-400 font-normal">({count} vehicles)</span>
+            </span>
+            <span className="font-mono text-gray-600">{total.toFixed(2)} kg</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -198,7 +295,7 @@ export default function Home() {
           </div>
           <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Lithium Tracker</h1>
           <p className="text-gray-500 mt-2 text-lg">
-            Upload your vehicle and reference files to calculate lithium (kg) consumption by month
+            Upload your vehicle and reference files to calculate lithium (kg) by month and category
           </p>
         </div>
 
@@ -214,7 +311,7 @@ export default function Home() {
               <div className="space-y-4">
                 <FileDropZone
                   label="File 1 — Input File"
-                  description="Vehicle data with dates (Col B), car names (Col D), fuel type (Col E)"
+                  description="Vehicle data with dates (Col B), car names (Col D), fuel type (Col E), category (Col G)"
                   file={inputFile}
                   onFile={setInputFile}
                   accent="blue"
@@ -235,6 +332,7 @@ export default function Home() {
                   <li>Rows with "Benzin" or "Diesel" in Column E are excluded</li>
                   <li>Only rows where Column E is blank or "El" are kept</li>
                   <li>Dates in Column B (YYYY-MM-DD) are split into 12 months</li>
+                  <li>Column G is read and split into categories: C2, C3, C2-C3</li>
                   <li>Car names matched with ≥50% similarity to File 2</li>
                 </ul>
               </div>
@@ -260,7 +358,7 @@ export default function Home() {
               <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             </div>
             <h2 className="text-xl font-semibold text-gray-900">Processing files...</h2>
-            <p className="text-gray-500 mt-2">Cleaning, filtering, and matching car names</p>
+            <p className="text-gray-500 mt-2">Cleaning, filtering, categorising, and matching car names</p>
           </div>
         )}
 
@@ -296,12 +394,7 @@ export default function Home() {
                       />
                     ))}
                   </div>
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <div className="flex items-center justify-between px-1">
-                      <span className="text-sm font-semibold text-gray-700">Grand Total</span>
-                      <span className="font-bold text-blue-700 text-lg">{totalAllMonths.toFixed(2)} kg</span>
-                    </div>
-                  </div>
+                  <GrandTotalRow summaries={monthlySummaries} />
                 </div>
               </div>
 
