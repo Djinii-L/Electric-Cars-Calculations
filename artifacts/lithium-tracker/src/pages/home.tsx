@@ -113,25 +113,37 @@ function MonthCard({ summary, onClick, isSelected }: { summary: MonthSummary; on
   );
 }
 
-function CategoryTable({ monthName, category, rows }: { monthName: string; category: Category; rows: ProcessedRow[] }) {
-  const style = CATEGORY_STYLE[category];
-  const catRows = rows.filter((r) => r.category === category);
-  const total = catRows.reduce((s, r) => s + (r.lithiumKg ?? 0), 0);
+function VehicleTable({
+  monthName,
+  label,
+  headerClass,
+  accentClass,
+  tableRows,
+}: {
+  monthName: string;
+  label: string;
+  headerClass: string;
+  accentClass: string;
+  tableRows: ProcessedRow[];
+}) {
+  const total = tableRows.reduce((s, r) => s + (r.lithiumKg ?? 0), 0);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className={`flex items-center justify-between px-6 py-3 border-b ${style.header}`}>
+      <div className={`flex items-center justify-between px-6 py-3 border-b ${headerClass}`}>
         <h3 className="font-semibold text-gray-900">
           {monthName} — Vehicle Details{" "}
-          <span className={`font-bold ${style.accent}`}>{category}</span>
+          <span className={`font-bold ${accentClass}`}>{label}</span>
         </h3>
         <span className="text-sm text-gray-500">
-          {catRows.length} vehicles ·{" "}
-          <span className={`font-semibold ${style.accent}`}>{total.toFixed(2)} kg</span>
+          {tableRows.length} vehicles
+          {total > 0 && (
+            <> · <span className={`font-semibold ${accentClass}`}>{total.toFixed(2)} kg</span></>
+          )}
         </span>
       </div>
 
-      {catRows.length === 0 ? (
+      {tableRows.length === 0 ? (
         <p className="text-center text-gray-400 py-6 text-sm">No vehicles in this category.</p>
       ) : (
         <div className="overflow-x-auto">
@@ -145,7 +157,7 @@ function CategoryTable({ monthName, category, rows }: { monthName: string; categ
               </tr>
             </thead>
             <tbody>
-              {catRows.map((row, i) => (
+              {tableRows.map((row, i) => (
                 <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
                   <td className="py-2 px-4 text-gray-800 font-medium">{row.carName}</td>
                   <td className="py-2 px-4 text-gray-600">
@@ -162,18 +174,45 @@ function CategoryTable({ monthName, category, rows }: { monthName: string; categ
                 </tr>
               ))}
             </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-gray-200 bg-blue-50">
-                <td colSpan={3} className="py-2 px-4 font-semibold text-gray-700">Total</td>
-                <td className="py-2 px-4 text-right font-mono font-bold text-blue-700">
-                  {total.toFixed(2)}
-                </td>
-              </tr>
-            </tfoot>
+            {total > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-blue-50">
+                  <td colSpan={3} className="py-2 px-4 font-semibold text-gray-700">Total</td>
+                  <td className="py-2 px-4 text-right font-mono font-bold text-blue-700">
+                    {total.toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       )}
     </div>
+  );
+}
+
+function CategoryTable({ monthName, category, rows }: { monthName: string; category: Category; rows: ProcessedRow[] }) {
+  const style = CATEGORY_STYLE[category];
+  return (
+    <VehicleTable
+      monthName={monthName}
+      label={category}
+      headerClass={style.header}
+      accentClass={style.accent}
+      tableRows={rows.filter((r) => r.category === category)}
+    />
+  );
+}
+
+function NoMatchTable({ monthName, rows }: { monthName: string; rows: ProcessedRow[] }) {
+  return (
+    <VehicleTable
+      monthName={monthName}
+      label="No match"
+      headerClass="bg-pink-50 border-pink-200"
+      accentClass="text-pink-600"
+      tableRows={rows.filter((r) => r.matchedCar === undefined)}
+    />
   );
 }
 
@@ -344,6 +383,10 @@ export default function Home() {
                     rows={selectedSummary?.rows ?? []}
                   />
                 ))}
+                <NoMatchTable
+                  monthName={selectedSummary?.monthName ?? ""}
+                  rows={selectedSummary?.rows ?? []}
+                />
               </div>
             </div>
           </div>
