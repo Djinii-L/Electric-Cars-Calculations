@@ -1,10 +1,7 @@
 import * as XLSX from "xlsx";
 
-export type Category = "C2" | "C3" | "C2-C3" | "Other";
-
 export interface ProcessedRow {
   month: number;
-  category: Category;
   carName: string;
   rawDate: string;
   matchedCar?: string;
@@ -15,7 +12,6 @@ export interface ProcessedRow {
 export interface ReferenceRow {
   carName: string;
   lithiumKg: number;
-  category: Category;
 }
 
 export interface MonthSummary {
@@ -30,14 +26,6 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
 ];
-
-function normalizeCategory(raw: string): Category {
-  const s = raw.trim().toUpperCase().replace(/\s+/g, "");
-  if (s === "C2-C3" || s === "C2C3") return "C2-C3";
-  if (s === "C2") return "C2";
-  if (s === "C3") return "C3";
-  return "Other";
-}
 
 function normalizeCarName(name: string): string {
   return name
@@ -121,10 +109,9 @@ export function parseReferenceFile(file: File): Promise<ReferenceRow[]> {
           const carName = String(row[0] ?? "").trim();
           const lithiumRaw = row[3];
           const lithiumKg = typeof lithiumRaw === "number" ? lithiumRaw : parseFloat(String(lithiumRaw ?? ""));
-          const categoryRaw = String(row[6] ?? "").trim();
 
           if (!carName || carName === "" || isNaN(lithiumKg)) continue;
-          result.push({ carName, lithiumKg, category: normalizeCategory(categoryRaw) });
+          result.push({ carName, lithiumKg });
         }
         resolve(result);
       } catch (err) {
@@ -181,7 +168,6 @@ export function parseInputFile(
           const match = findBestMatch(colF, references);
           const processed: ProcessedRow = {
             month,
-            category: match?.ref.category ?? "Other",
             carName: colF,
             rawDate: colD,
             matchedCar: match?.ref.carName,
