@@ -1,12 +1,10 @@
 import * as XLSX from "xlsx";
-import type { MonthSummary, Category } from "./excelProcessor";
+import type { MonthSummary } from "./excelProcessor";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
 ];
-
-const CATEGORIES: Category[] = ["C2", "C3", "C2-C3"];
 
 export function exportToExcel(
   monthlySummaries: MonthSummary[],
@@ -15,33 +13,29 @@ export function exportToExcel(
   const wb = XLSX.utils.book_new();
 
   const summaryData: (string | number)[][] = [
-    ["Month", "C2 (kg)", "C3 (kg)", "C2-C3 (kg)", "No Match (kg)", "Total (kg)", "Vehicles"],
+    ["Month", "Matched (kg)", "No Match (kg)", "Total (kg)", "Vehicles"],
   ];
 
-  let grandC2 = 0, grandC3 = 0, grandC2C3 = 0, grandNoMatch = 0, grandTotal = 0, grandVehicles = 0;
+  let grandMatched = 0, grandNoMatch = 0, grandTotal = 0, grandVehicles = 0;
 
   for (const s of monthlySummaries) {
-    const c2 = s.rows.filter(r => r.category === "C2").reduce((a, r) => a + (r.lithiumKg ?? 0), 0);
-    const c3 = s.rows.filter(r => r.category === "C3").reduce((a, r) => a + (r.lithiumKg ?? 0), 0);
-    const c2c3 = s.rows.filter(r => r.category === "C2-C3").reduce((a, r) => a + (r.lithiumKg ?? 0), 0);
+    const matched = s.rows.filter(r => r.matchedCar !== undefined).reduce((a, r) => a + (r.lithiumKg ?? 0), 0);
     const noMatchRows = s.rows.filter(r => r.matchedCar === undefined);
     const noMatch = noMatchRows.reduce((a, r) => {
       const key = `${s.month}-${s.rows.indexOf(r)}`;
       return a + (manualLithium[key] ?? r.lithiumKg ?? 0);
     }, 0);
-    const total = c2 + c3 + c2c3 + noMatch;
+    const total = matched + noMatch;
 
-    grandC2 += c2;
-    grandC3 += c3;
-    grandC2C3 += c2c3;
+    grandMatched += matched;
     grandNoMatch += noMatch;
     grandTotal += total;
     grandVehicles += s.rowCount;
 
-    summaryData.push([s.monthName, c2, c3, c2c3, noMatch, total, s.rowCount]);
+    summaryData.push([s.monthName, matched, noMatch, total, s.rowCount]);
   }
 
-  summaryData.push(["Grand Total", grandC2, grandC3, grandC2C3, grandNoMatch, grandTotal, grandVehicles]);
+  summaryData.push(["Grand Total", grandMatched, grandNoMatch, grandTotal, grandVehicles]);
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
   XLSX.utils.book_append_sheet(wb, summarySheet, "Monthly Summary");
@@ -49,17 +43,15 @@ export function exportToExcel(
   for (const s of monthlySummaries) {
     if (s.rowCount === 0) continue;
 
-    for (const cat of CATEGORIES) {
-      const catRows = s.rows.filter(r => r.category === cat);
-      if (catRows.length === 0) continue;
-
+    const matchedRows = s.rows.filter(r => r.matchedCar !== undefined);
+    if (matchedRows.length > 0) {
       const data: (string | number)[][] = [
-        ["Car (File 1)", "Matched Car (File 2)", "Match %", "Lithium (kg)"],
+        ["Car (File 1)", "Matched Car (File 2)", "Match %", "Battery (total Kg)"],
       ];
-      let catTotal = 0;
-      for (const r of catRows) {
+      let matchedTotal = 0;
+      for (const r of matchedRows) {
         const li = r.lithiumKg ?? 0;
-        catTotal += li;
+        matchedTotal += li;
         data.push([
           r.carName,
           r.matchedCar ?? "",
@@ -67,9 +59,9 @@ export function exportToExcel(
           li,
         ]);
       }
-      data.push(["Total", "", "", catTotal]);
+      data.push(["Total", "", "", matchedTotal]);
 
-      const sheetName = `${MONTH_NAMES[s.month - 1].substring(0, 3)} ${cat}`;
+      const sheetName = `${MONTH_NAMES[s.month - 1].substring(0, 3)} Matched`;
       const sheet = XLSX.utils.aoa_to_sheet(data);
       XLSX.utils.book_append_sheet(wb, sheet, sheetName);
     }
@@ -77,7 +69,7 @@ export function exportToExcel(
     const noMatchRows = s.rows.filter(r => r.matchedCar === undefined);
     if (noMatchRows.length > 0) {
       const data: (string | number)[][] = [
-        ["Car (File 1)", "Lithium (kg) - Manual"],
+        ["Car (File 1)", "Battery (total Kg) - Manual"],
       ];
       let nmTotal = 0;
       for (const r of noMatchRows) {

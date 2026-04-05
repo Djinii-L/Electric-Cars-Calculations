@@ -1,17 +1,8 @@
 import { useState, useCallback, useMemo } from "react";
-import { parseInputFile, parseReferenceFile, MonthSummary, ProcessedRow, ReferenceRow, Category } from "@/lib/excelProcessor";
+import { parseInputFile, parseReferenceFile, MonthSummary, ProcessedRow, ReferenceRow } from "@/lib/excelProcessor";
 import { exportToExcel } from "@/lib/excelExport";
 
 type Step = "upload" | "processing" | "results";
-
-const CATEGORY_STYLE: Record<Category, { header: string; accent: string }> = {
-  C2:      { header: "bg-violet-50 border-violet-200", accent: "text-violet-700" },
-  C3:      { header: "bg-teal-50 border-teal-200",     accent: "text-teal-700" },
-  "C2-C3": { header: "bg-amber-50 border-amber-200",   accent: "text-amber-700" },
-  Other:   { header: "bg-gray-50 border-gray-200",     accent: "text-gray-500" },
-};
-
-const CATEGORIES: Category[] = ["C2", "C3", "C2-C3"];
 
 function UploadIcon() {
   return (
@@ -109,44 +100,33 @@ function MonthCard({ summary, onClick, isSelected, extraLithium }: { summary: Mo
         <span className="text-2xl font-bold text-gray-900">
           {displayTotal.toFixed(2)}
         </span>
-        <span className="text-sm text-gray-500 ml-1">kg Li</span>
+        <span className="text-sm text-gray-500 ml-1">kg</span>
       </div>
     </button>
   );
 }
 
-function VehicleTable({
-  monthName,
-  label,
-  headerClass,
-  accentClass,
-  tableRows,
-}: {
-  monthName: string;
-  label: string;
-  headerClass: string;
-  accentClass: string;
-  tableRows: ProcessedRow[];
-}) {
-  const total = tableRows.reduce((s, r) => s + (r.lithiumKg ?? 0), 0);
+function MatchedTable({ monthName, rows }: { monthName: string; rows: ProcessedRow[] }) {
+  const matchedRows = rows.filter((r) => r.matchedCar !== undefined);
+  const total = matchedRows.reduce((s, r) => s + (r.lithiumKg ?? 0), 0);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className={`flex items-center justify-between px-6 py-3 border-b ${headerClass}`}>
+      <div className="flex items-center justify-between px-6 py-3 border-b bg-green-50 border-green-200">
         <h3 className="font-semibold text-gray-900">
           {monthName} — Vehicle Details{" "}
-          <span className={`font-bold ${accentClass}`}>{label}</span>
+          <span className="font-bold text-green-700">Matched</span>
         </h3>
         <span className="text-sm text-gray-500">
-          {tableRows.length} vehicles
+          {matchedRows.length} vehicles
           {total > 0 && (
-            <> · <span className={`font-semibold ${accentClass}`}>{total.toFixed(2)} kg</span></>
+            <> · <span className="font-semibold text-green-700">{total.toFixed(2)} kg</span></>
           )}
         </span>
       </div>
 
-      {tableRows.length === 0 ? (
-        <p className="text-center text-gray-400 py-6 text-sm">No vehicles in this category.</p>
+      {matchedRows.length === 0 ? (
+        <p className="text-center text-gray-400 py-6 text-sm">No matched vehicles.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -159,19 +139,13 @@ function VehicleTable({
               </tr>
             </thead>
             <tbody>
-              {tableRows.map((row, i) => (
+              {matchedRows.map((row, i) => (
                 <tr key={i} className={`border-b border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
                   <td className="py-2 px-4 text-gray-800 font-medium">{row.carName}</td>
-                  <td className="py-2 px-4 text-gray-600">
-                    {row.matchedCar ?? <span className="text-gray-400 italic">No match</span>}
-                  </td>
+                  <td className="py-2 px-4 text-gray-600">{row.matchedCar}</td>
                   <td className="py-2 px-4 text-center"><MatchBadge score={row.matchScore} /></td>
                   <td className="py-2 px-4 text-right font-mono">
-                    {row.lithiumKg !== undefined ? (
-                      <span className="font-semibold text-gray-800">{row.lithiumKg.toFixed(2)}</span>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
+                    <span className="font-semibold text-gray-800">{(row.lithiumKg ?? 0).toFixed(2)}</span>
                   </td>
                 </tr>
               ))}
@@ -190,19 +164,6 @@ function VehicleTable({
         </div>
       )}
     </div>
-  );
-}
-
-function CategoryTable({ monthName, category, rows }: { monthName: string; category: Category; rows: ProcessedRow[] }) {
-  const style = CATEGORY_STYLE[category];
-  return (
-    <VehicleTable
-      monthName={monthName}
-      label={category}
-      headerClass={style.header}
-      accentClass={style.accent}
-      tableRows={rows.filter((r) => r.category === category)}
-    />
   );
 }
 
@@ -244,14 +205,14 @@ function NoMatchTable({
       </div>
 
       {noMatchRows.length === 0 ? (
-        <p className="text-center text-gray-400 py-6 text-sm">No vehicles in this category.</p>
+        <p className="text-center text-gray-400 py-6 text-sm">No unmatched vehicles.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100">
                 <th className="text-left py-2 px-4 text-gray-500 font-medium">Car (File 1)</th>
-                <th className="text-right py-2 px-4 text-gray-500 font-medium">Lithium (kg) — enter manually</th>
+                <th className="text-right py-2 px-4 text-gray-500 font-medium">Battery (total Kg) — enter manually</th>
               </tr>
             </thead>
             <tbody>
@@ -393,7 +354,7 @@ export default function Home() {
                 />
                 <FileDropZone
                   label="File 2 — Reference File"
-                  description="Car names (Col A), Lithium kg (Col D), category C2/C3/C2-C3 (Col G)"
+                  description="Car names (Col A), Battery weight kg (Col D)"
                   file={referenceFile}
                   onFile={setReferenceFile}
                   accent="purple"
@@ -407,7 +368,6 @@ export default function Home() {
                   <li>Only rows where Column G is blank or "El" are kept</li>
                   <li>Dates in Column D (YYYY-MM-DD) are split into 12 months</li>
                   <li>Car names (Column F) matched with ≥50% similarity to File 2</li>
-                  <li>Each matched car is categorised (C2, C3, C2-C3) from Column G of File 2</li>
                 </ul>
               </div>
 
@@ -442,7 +402,7 @@ export default function Home() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">Results</h2>
                 <p className="text-gray-500 text-sm mt-1">
-                  Total lithium across all months:{" "}
+                  Total battery weight across all months:{" "}
                   <span className="font-semibold text-blue-700">{totalAllMonths.toFixed(2)} kg</span>
                 </p>
               </div>
@@ -488,14 +448,10 @@ export default function Home() {
               </div>
 
               <div className="lg:col-span-3 space-y-4">
-                {CATEGORIES.map((cat) => (
-                  <CategoryTable
-                    key={cat}
-                    monthName={selectedSummary?.monthName ?? ""}
-                    category={cat}
-                    rows={selectedSummary?.rows ?? []}
-                  />
-                ))}
+                <MatchedTable
+                  monthName={selectedSummary?.monthName ?? ""}
+                  rows={selectedSummary?.rows ?? []}
+                />
                 <NoMatchTable
                   monthName={selectedSummary?.monthName ?? ""}
                   rows={selectedSummary?.rows ?? []}
