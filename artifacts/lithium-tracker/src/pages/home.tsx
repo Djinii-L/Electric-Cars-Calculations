@@ -386,7 +386,7 @@ export default function Home() {
               <div className="space-y-4">
                 <FileDropZone
                   label="File 1 — Input File"
-                  description="Vehicle data with dates (Col B), car names (Col D), fuel type (Col E)"
+                  description="Vehicle data with dates (Col D), car names (Col F), fuel type (Col G)"
                   file={inputFile}
                   onFile={setInputFile}
                   accent="blue"
@@ -403,11 +403,10 @@ export default function Home() {
               <div className="mt-8 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
                 <p className="font-semibold mb-1">Processing rules applied to File 1:</p>
                 <ul className="list-disc list-inside space-y-1 text-amber-700">
-                  <li>Column A is removed</li>
-                  <li>Rows with "Benzin" or "Diesel" in Column E are excluded</li>
-                  <li>Only rows where Column E is blank or "El" are kept</li>
-                  <li>Dates in Column B (YYYY-MM-DD) are split into 12 months</li>
-                  <li>Car names matched with ≥50% similarity to File 2</li>
+                  <li>Rows with "Benzin" or "Diesel" in Column G are excluded</li>
+                  <li>Only rows where Column G is blank or "El" are kept</li>
+                  <li>Dates in Column D (YYYY-MM-DD) are split into 12 months</li>
+                  <li>Car names (Column F) matched with ≥50% similarity to File 2</li>
                   <li>Each matched car is categorised (C2, C3, C2-C3) from Column G of File 2</li>
                 </ul>
               </div>

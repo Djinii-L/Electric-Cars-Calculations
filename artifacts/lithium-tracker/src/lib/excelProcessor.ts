@@ -155,21 +155,21 @@ export function parseInputFile(
           const row = rawRows[i];
           if (!row || row.length === 0) continue;
 
-          const colB = String(row[1] ?? "").trim();
           const colD = String(row[3] ?? "").trim();
-          const colE = String(row[4] ?? "").trim().toLowerCase();
+          const colF = String(row[5] ?? "").trim();
+          const colG = String(row[6] ?? "").trim().toLowerCase();
 
-          if (colE === "benzin" || colE === "diesel") continue;
-          if (colE !== "" && colE !== "el") continue;
+          if (colG === "benzin" || colG === "diesel") continue;
+          if (colG !== "" && colG !== "el") continue;
 
-          if (!colB || !colD) continue;
+          if (!colD || !colF) continue;
 
           let month: number | null = null;
-          const dateMatch = colB.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+          const dateMatch = colD.match(/^(\d{4})-(\d{2})-(\d{2})$/);
           if (dateMatch) {
             month = parseInt(dateMatch[2], 10);
           } else {
-            const excelNum = parseFloat(colB);
+            const excelNum = parseFloat(colD);
             if (!isNaN(excelNum)) {
               const jsDate = new Date(Math.round((excelNum - 25569) * 86400 * 1000));
               month = jsDate.getUTCMonth() + 1;
@@ -178,12 +178,12 @@ export function parseInputFile(
 
           if (!month || month < 1 || month > 12) continue;
 
-          const match = findBestMatch(colD, references);
+          const match = findBestMatch(colF, references);
           const processed: ProcessedRow = {
             month,
             category: match?.ref.category ?? "Other",
-            carName: colD,
-            rawDate: colB,
+            carName: colF,
+            rawDate: colD,
             matchedCar: match?.ref.carName,
             lithiumKg: match?.ref.lithiumKg,
             matchScore: match?.score,
