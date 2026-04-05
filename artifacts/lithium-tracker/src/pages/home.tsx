@@ -1,5 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { parseInputFile, parseReferenceFile, MonthSummary, ProcessedRow, ReferenceRow, Category } from "@/lib/excelProcessor";
+import { exportToExcel } from "@/lib/excelExport";
 
 type Step = "upload" | "processing" | "results";
 
@@ -89,7 +90,8 @@ function MatchBadge({ score }: { score?: number }) {
   return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>{pct}%</span>;
 }
 
-function MonthCard({ summary, onClick, isSelected }: { summary: MonthSummary; onClick: () => void; isSelected: boolean }) {
+function MonthCard({ summary, onClick, isSelected, extraLithium }: { summary: MonthSummary; onClick: () => void; isSelected: boolean; extraLithium: number }) {
+  const displayTotal = summary.totalLithiumKg + extraLithium;
   return (
     <button
       onClick={onClick}
@@ -105,7 +107,7 @@ function MonthCard({ summary, onClick, isSelected }: { summary: MonthSummary; on
       </div>
       <div className="mt-2">
         <span className="text-2xl font-bold text-gray-900">
-          {summary.totalLithiumKg.toFixed(2)}
+          {displayTotal.toFixed(2)}
         </span>
         <span className="text-sm text-gray-500 ml-1">kg Li</span>
       </div>
@@ -204,15 +206,94 @@ function CategoryTable({ monthName, category, rows }: { monthName: string; categ
   );
 }
 
-function NoMatchTable({ monthName, rows }: { monthName: string; rows: ProcessedRow[] }) {
+function NoMatchTable({
+  monthName,
+  rows,
+  month,
+  allRows,
+  manualLithium,
+  onManualChange,
+}: {
+  monthName: string;
+  rows: ProcessedRow[];
+  month: number;
+  allRows: ProcessedRow[];
+  manualLithium: Record<string, number>;
+  onManualChange: (key: string, value: number) => void;
+}) {
+  const noMatchRows = rows.filter((r) => r.matchedCar === undefined);
+  const total = noMatchRows.reduce((s, r) => {
+    const idx = allRows.indexOf(r);
+    const key = `${month}-${idx}`;
+    return s + (manualLithium[key] ?? 0);
+  }, 0);
+
   return (
-    <VehicleTable
-      monthName={monthName}
-      label="No match"
-      headerClass="bg-pink-50 border-pink-200"
-      accentClass="text-pink-600"
-      tableRows={rows.filter((r) => r.matchedCar === undefined)}
-    />
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-3 border-b bg-pink-50 border-pink-200">
+        <h3 className="font-semibold text-gray-900">
+          {monthName} — Vehicle Details{" "}
+          <span className="font-bold text-pink-600">No match</span>
+        </h3>
+        <span className="text-sm text-gray-500">
+          {noMatchRows.length} vehicles
+          {total > 0 && (
+            <> · <span className="font-semibold text-pink-600">{total.toFixed(2)} kg</span></>
+          )}
+        </span>
+      </div>
+
+      {noMatchRows.length === 0 ? (
+        <p className="text-center text-gray-400 py-6 text-sm">No vehicles in this category.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="text-left py-2 px-4 text-gray-500 font-medium">Car (File 1)</th>
+                <th className="text-right py-2 px-4 text-gray-500 font-medium">Lithium (kg) — enter manually</th>
+              </tr>
+            </thead>
+            <tbody>
+              {noMatchRows.map((row) => {
+                const idx = allRows.indexOf(row);
+                const key = `${month}-${idx}`;
+                const val = manualLithium[key] ?? "";
+                return (
+                  <tr key={idx} className={`border-b border-gray-100 ${noMatchRows.indexOf(row) % 2 === 0 ? "bg-white" : "bg-gray-50"}`}>
+                    <td className="py-2 px-4 text-gray-800 font-medium">{row.carName}</td>
+                    <td className="py-2 px-4 text-right">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={val}
+                        onChange={(e) => {
+                          const parsed = parseFloat(e.target.value);
+                          onManualChange(key, isNaN(parsed) ? 0 : parsed);
+                        }}
+                        placeholder="0.00"
+                        className="w-28 text-right font-mono border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-pink-300 focus:border-pink-400"
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            {total > 0 && (
+              <tfoot>
+                <tr className="border-t-2 border-gray-200 bg-blue-50">
+                  <td className="py-2 px-4 font-semibold text-gray-700">Total</td>
+                  <td className="py-2 px-4 text-right font-mono font-bold text-blue-700">
+                    {total.toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -224,6 +305,7 @@ export default function Home() {
   const [monthlySummaries, setMonthlySummaries] = useState<MonthSummary[]>([]);
   const [_references, setReferences] = useState<ReferenceRow[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<number>(1);
+  const [manualLithium, setManualLithium] = useState<Record<string, number>>({});
 
   const canProcess = inputFile && referenceFile;
 
@@ -249,11 +331,36 @@ export default function Home() {
     setInputFile(null);
     setReferenceFile(null);
     setMonthlySummaries([]);
+    setManualLithium({});
     setError(null);
     setStep("upload");
   };
 
-  const totalAllMonths = monthlySummaries.reduce((s, m) => s + m.totalLithiumKg, 0);
+  const handleManualChange = useCallback((key: string, value: number) => {
+    setManualLithium((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const handleDownload = useCallback(() => {
+    exportToExcel(monthlySummaries, manualLithium);
+  }, [monthlySummaries, manualLithium]);
+
+  const totalManualByMonth = useMemo(() => {
+    const result: Record<number, number> = {};
+    for (const s of monthlySummaries) {
+      let manualTotal = 0;
+      for (const r of s.rows) {
+        if (r.matchedCar === undefined) {
+          const idx = s.rows.indexOf(r);
+          const key = `${s.month}-${idx}`;
+          manualTotal += manualLithium[key] ?? 0;
+        }
+      }
+      result[s.month] = manualTotal;
+    }
+    return result;
+  }, [monthlySummaries, manualLithium]);
+
+  const totalAllMonths = monthlySummaries.reduce((s, m) => s + m.totalLithiumKg + (totalManualByMonth[m.month] ?? 0), 0);
   const selectedSummary = monthlySummaries.find((s) => s.month === selectedMonth);
 
   return (
@@ -343,12 +450,21 @@ export default function Home() {
                   <span className="font-semibold text-blue-700">{totalAllMonths.toFixed(2)} kg</span>
                 </p>
               </div>
-              <button
-                onClick={handleReset}
-                className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Upload New Files
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleDownload}
+                  className="text-sm text-white bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg shadow-sm hover:shadow-md transition-all flex items-center gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Download Excel
+                </button>
+                <button
+                  onClick={handleReset}
+                  className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Upload New Files
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -362,6 +478,7 @@ export default function Home() {
                         summary={summary}
                         onClick={() => setSelectedMonth(summary.month)}
                         isSelected={selectedMonth === summary.month}
+                        extraLithium={totalManualByMonth[summary.month] ?? 0}
                       />
                     ))}
                   </div>
@@ -386,6 +503,10 @@ export default function Home() {
                 <NoMatchTable
                   monthName={selectedSummary?.monthName ?? ""}
                   rows={selectedSummary?.rows ?? []}
+                  month={selectedMonth}
+                  allRows={selectedSummary?.rows ?? []}
+                  manualLithium={manualLithium}
+                  onManualChange={handleManualChange}
                 />
               </div>
             </div>
