@@ -155,7 +155,7 @@ function VehicleTable({
                 <th className="text-left py-2 px-4 text-gray-500 font-medium">Car (File 1)</th>
                 <th className="text-left py-2 px-4 text-gray-500 font-medium">Matched Car (File 2)</th>
                 <th className="text-center py-2 px-4 text-gray-500 font-medium">Match</th>
-                <th className="text-right py-2 px-4 text-gray-500 font-medium">Lithium (kg)</th>
+                <th className="text-right py-2 px-4 text-gray-500 font-medium">Battery (total Kg)</th>
               </tr>
             </thead>
             <tbody>
