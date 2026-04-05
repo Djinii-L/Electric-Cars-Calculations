@@ -87,5 +87,5 @@ export function exportToExcel(
     }
   }
 
-  XLSX.writeFile(wb, "lithium-analysis.xlsx");
+  XLSX.writeFile(wb, "EV-battery-calculation.xlsx");
 }
