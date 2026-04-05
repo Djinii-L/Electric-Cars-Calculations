@@ -369,12 +369,9 @@ export default function Home() {
         <div className="mb-10 text-center">
           <div className="inline-flex items-center gap-2 bg-blue-100 text-blue-700 text-sm font-medium px-3 py-1 rounded-full mb-4">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-            Lithium analysis of electrical vehicles
+            Calculation of EV batteries
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Lithium calculator based on EV-database.org</h1>
-          <p className="text-gray-500 mt-2 text-lg">
-            Upload your vehicle and reference files to calculate lithium (kg) consumption by month
-          </p>
+          <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Total EV battery Weight based on EV-database.org</h1>
         </div>
 
         {step === "upload" && (
